@@ -1,0 +1,36 @@
+# Inverse modelling experiment configuration
+experiment:
+  name: inverse_model
+
+data:
+  num_curves: 2000
+  steps_per_curve: 60
+  val_fraction: 0.2
+  features: [mouse_dx, dt, view_delta]  # columns stored per timestep
+  output_dir: data/sim_inverse
+  seed: 42
+
+model:
+  input_dim: 3
+  hidden_dim: 128
+  num_layers: 2
+  num_params: 5
+  dropout: 0.1
+  use_attention: true       # attention pooling over LSTM outputs
+
+training:
+  epochs: 50
+  batch_size: 32
+  max_seq_len: 80
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  lr_patience: 5            # ReduceLROnPlateau patience
+  lr_factor: 0.5
+  early_stop_patience: 10
+
+logging:
+  tensorboard_dir: runs/inverse_model/tb
+  save_dir: runs/inverse_model
+
+output:
+  model_path: runs/inverse_model/inverse_curve_net.pt

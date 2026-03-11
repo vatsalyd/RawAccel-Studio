@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env_py/
+
+# Data & model artifacts (large files)
+data/sim_inverse/
+data/aim_anomaly/
+data/real_logs/
+runs/
+*.pt
+*.pth
+*.npz
+*.pkl
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_metadata
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
+
+# TensorBoard
+tb_logs/
