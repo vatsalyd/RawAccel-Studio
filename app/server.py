@@ -213,6 +213,29 @@ async def get_param_bounds():
     }
 
 
+@app.get("/api/sessions")
+async def list_sessions():
+    """List all recorded aim sessions with summary metadata."""
+    sessions = []
+    for filename in sorted(DATA_DIR.iterdir(), reverse=True):
+        if not filename.suffix == ".json":
+            continue
+        try:
+            with open(filename, "r") as f:
+                data = json.load(f)
+            sessions.append({
+                "filename": filename.name,
+                "source": data.get("source", "browser"),
+                "num_events": len(data.get("events", data.get("samples", []))),
+                "profile": data.get("profile", {}),
+                "metadata": data.get("metadata", data.get("summary", {})),
+                "timestamp": data.get("timestamp", data.get("recorded_at", 0)),
+            })
+        except (json.JSONDecodeError, IOError):
+            continue
+    return {"sessions": sessions, "total": len(sessions)}
+
+
 # ---------------------------------------------------------------------------
 # Run
 # ---------------------------------------------------------------------------

@@ -331,6 +331,8 @@
             this.mouseEvents = [];
             this.lastMousePos = { x: 0, y: 0 };
             this.trailPoints = [];
+            this.mode = 'flick';  // flick | tracking | precision
+            this.trackAngle = 0;  // for tracking mode orbit
 
             this.canvas.addEventListener('click', (e) => this.onClick(e));
             this.canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
@@ -367,7 +369,8 @@
             ctx.fillText('Press Start to begin the aim task', cx, cy + 60);
         }
 
-        start() {
+        start(mode) {
+            this.mode = mode || 'flick';
             this.running = true;
             this.hits = 0;
             this.misses = 0;
@@ -375,6 +378,7 @@
             this.hitTimes = [];
             this.mouseEvents = [];
             this.trailPoints = [];
+            this.trackAngle = 0;
             this.spawnTarget();
             this.loop();
             this.updateStats();
@@ -387,13 +391,33 @@
 
         spawnTarget() {
             const margin = 40;
-            const r = 12 + Math.random() * 14;
+            const cx = this.width / 2, cy = this.height / 2;
+            let r, x, y;
+
+            if (this.mode === 'precision') {
+                // Tiny targets near center
+                r = 6 + Math.random() * 6;
+                x = cx + (Math.random() - 0.5) * 200;
+                y = cy + (Math.random() - 0.5) * 160;
+            } else if (this.mode === 'tracking') {
+                // Moving target — orbit around center
+                r = 16 + Math.random() * 8;
+                this.trackAngle = Math.random() * Math.PI * 2;
+                const orbitR = 120 + Math.random() * 80;
+                x = cx + Math.cos(this.trackAngle) * orbitR;
+                y = cy + Math.sin(this.trackAngle) * orbitR;
+            } else {
+                // Flick — random across canvas
+                r = 12 + Math.random() * 14;
+                x = margin + Math.random() * (this.width - 2 * margin);
+                y = margin + Math.random() * (this.height - 2 * margin);
+            }
+
             this.target = {
-                x: margin + Math.random() * (this.width - 2 * margin),
-                y: margin + Math.random() * (this.height - 2 * margin),
-                r: r,
+                x, y, r,
                 spawnTime: performance.now(),
                 pulse: 0,
+                speed: this.mode === 'tracking' ? (80 + Math.random() * 120) : 0,
             };
             this.lastTargetTime = performance.now();
         }
@@ -449,10 +473,13 @@
             this.trailPoints.push({ x: mx, y: my, t: performance.now() });
             if (this.trailPoints.length > 60) this.trailPoints.shift();
 
+            // Capture raw movementX/Y deltas (unaccelerated by OS where available)
             this.mouseEvents.push({
                 type: 'move',
                 x: mx, y: my,
                 dx, dy,
+                rawDx: e.movementX || 0,
+                rawDy: e.movementY || 0,
                 time: performance.now(),
             });
         }
@@ -501,23 +528,35 @@
                 ctx.stroke();
             }
 
+            // Tracking mode: move target
+            if (target && this.mode === 'tracking' && target.speed > 0) {
+                this.trackAngle += target.speed * 0.00003;
+                const cx = width / 2, cy = height / 2;
+                const orbitR = 150;
+                target.x = cx + Math.cos(this.trackAngle) * orbitR;
+                target.y = cy + Math.sin(this.trackAngle) * orbitR;
+            }
+
             // Target
             if (target) {
                 target.pulse = (target.pulse + 0.05) % (Math.PI * 2);
                 const pulseScale = 1 + 0.08 * Math.sin(target.pulse);
                 const r = target.r * pulseScale;
 
+                // Color by mode
+                const targetColor = this.mode === 'precision' ? '#fbbf24' : this.mode === 'tracking' ? '#22d97f' : '#ff3860';
+
                 // Outer glow
                 const gradient = ctx.createRadialGradient(target.x, target.y, r * 0.3, target.x, target.y, r * 2.5);
-                gradient.addColorStop(0, 'rgba(255, 56, 96, 0.3)');
-                gradient.addColorStop(1, 'rgba(255, 56, 96, 0)');
+                gradient.addColorStop(0, targetColor + '4D');
+                gradient.addColorStop(1, targetColor + '00');
                 ctx.fillStyle = gradient;
                 ctx.beginPath();
                 ctx.arc(target.x, target.y, r * 2.5, 0, Math.PI * 2);
                 ctx.fill();
 
                 // Target circle
-                ctx.fillStyle = '#ff3860';
+                ctx.fillStyle = targetColor;
                 ctx.beginPath();
                 ctx.arc(target.x, target.y, r, 0, Math.PI * 2);
                 ctx.fill();
@@ -534,6 +573,12 @@
                 ctx.beginPath();
                 ctx.arc(target.x, target.y, 2, 0, Math.PI * 2);
                 ctx.fill();
+
+                // Mode label
+                ctx.fillStyle = 'rgba(255,255,255,0.3)';
+                ctx.font = '12px JetBrains Mono';
+                ctx.textAlign = 'left';
+                ctx.fillText(this.mode.toUpperCase() + ' MODE', 12, 20);
             }
 
             // Crosshair at mouse position
@@ -551,6 +596,7 @@
         getSessionData() {
             return {
                 events: this.mouseEvents,
+                mode: this.mode,
                 stats: {
                     hits: this.hits,
                     misses: this.misses,
@@ -641,7 +687,9 @@
                 btn.textContent = '▶ Start Task';
                 $('#btn-save-aim').disabled = false;
             } else {
-                state.aimTask.start();
+                const modeSelect = $('#aim-mode');
+                const mode = modeSelect ? modeSelect.value : 'flick';
+                state.aimTask.start(mode);
                 btn.textContent = '⏹ Stop Task';
                 $('#btn-save-aim').disabled = true;
             }
