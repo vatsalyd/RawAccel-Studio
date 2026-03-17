@@ -250,8 +250,9 @@ class SyntheticAccelDataset(Dataset):
         out_dx, out_dy = apply_accel_curve(dx[1:], dy[1:], dt, params)
 
         # 4. Extract features from the *output* (what the user actually sees)
+        # Use timestamps[1:] to align with the diff'd delta arrays
         features = extract_features(
-            out_dx.astype(np.int32), out_dy.astype(np.int32), timestamps
+            out_dx.astype(np.int32), out_dy.astype(np.int32), timestamps[1:]
         )
 
         # 5. Labels
