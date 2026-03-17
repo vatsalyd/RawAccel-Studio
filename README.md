@@ -1,149 +1,71 @@
-# Mouse Accel ML/RL Suite
+# RawAccel Studio
 
-A research-style project exploring mouse acceleration for FPS games through four interconnected ML/RL approaches.
+**Record your mouse data while gaming → ML predicts your optimal [RawAccel](https://github.com/RawAccelOfficial/rawaccel) settings.**
 
-## 🎯 Project Goals
+Outputs a `settings.json` you can import directly into RawAccel.
 
-| Priority | Idea | Description |
-|----------|------|-------------|
-| **P1** | RL Auto-Tuning | Reinforcement learning agent that optimises accel curve parameters in a simulated aim environment |
-| **P2** | Inverse Modeling | Predict the accel curve being used from observed mouse/view behaviour |
-| **P3** | Ideal Curve Learning | Recommend personalised accel curves based on player profiles |
-| **P4** | Anomaly Detection | Classify normal vs assisted (aimbot) aim from mouse traces |
-
-## 🏗️ Architecture
-
-All four experiments share a common **acceleration curve parameterisation**:
+## How It Works
 
 ```
-sens(v) = k1 * v^a    for v < v0
-sens(v) = k2 * v^b    for v ≥ v0
-clamped to [sens_min, sens_max]
+1. Record mouse data while playing (desktop logger)
+2. ML model analyzes your movement patterns
+3. Predicts the best acceleration curve type + parameters
+4. Export settings.json → import into RawAccel
 ```
 
-```mermaid
-flowchart LR
-  subgraph Core
-    params["AccelParams"]
-    sim["AimSimulator"]
-    params --> sim
-  end
-
-  subgraph P1["P1: RL Auto-Tuning"]
-    rl["PPO/SAC Agent"] --> params
-    sim --> rl
-  end
-
-  subgraph P2["P2: Inverse Modeling"]
-    sim -->|sequences| inv["InverseCurveNet"]
-    inv -->|predicted params| params
-  end
-
-  subgraph P3["P3: Ideal Curve"]
-    profiles["Player Profiles"] --> ideal["IdealCurveNet"]
-    ideal -->|recommended params| params
-  end
-
-  subgraph P4["P4: Anomaly Detection"]
-    sim -->|traces| anomaly["AimAnomalyNet"]
-    anomaly -->|normal/assisted| label["Classification"]
-  end
-```
-
-## 📁 Project Structure
+## Project Structure
 
 ```
-├── env/aim_sim/          # Gymnasium aim environment + simulator
-│   └── env_core.py       # AimEnv, SimpleAimTask, HumanLikeController
-├── models/               # PyTorch model definitions
-│   ├── curve_param_config.py   # AccelParams, curve math, utilities
-│   ├── inverse_curve_net.py    # LSTM+Attention sequence regressor
-│   ├── ideal_curve_net.py      # MLP with constrained output
-│   └── aim_anomaly_net.py      # CNN+BiLSTM classifier
-├── experiments/          # Training scripts + configs
-│   ├── configs/          # YAML experiment configurations
-│   ├── rl_auto_tune/     # P1: RL training + evaluation
-│   ├── inverse_model/    # P2: data generation + training
-│   ├── ideal_curve/      # P3: profile-based training
-│   ├── aim_anomaly/      # P4: anomaly detection training
-│   └── run_experiments.py  # CLI dispatcher
-├── data/                 # Generated datasets (gitignored)
-│   └── utils.py          # Shared data loading utilities
-├── raw_input/            # Real mouse logging tools
-├── notebooks/            # Analysis notebooks
-├── docs/                 # Architecture documentation
-└── requirements.txt
+rawaccel/         RawAccel integration
+  curves.py       Curve math (Linear, Classic, Natural, Power, Synchronous, Jump)
+  config.py       settings.json builder
+
+collector/        Data collection
+  logger.py       Desktop mouse logger (run while gaming)
+
+ml/               ML pipeline
+  features.py     Feature extraction from mouse data
+  dataset.py      Synthetic data generation + PyTorch dataset
+  model.py        Neural network (features → curve params)
+  train.py        Training loop
+  predict.py      Inference (mouse data → RawAccel settings)
+
+app/              Web application (coming soon)
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
-### 1. Install dependencies
 ```bash
 pip install -r requirements.txt
+
+# 1. Record mouse data (10 seconds)
+python -m collector.logger --duration 10 --dpi 800
+
+# 2. Train the model
+python -m ml.train --epochs 30
+
+# 3. Predict your curve
+python -c "
+from ml.predict import AccelCurvePredictor
+p = AccelCurvePredictor('checkpoints/best_model.pt')
+print(p.predict_and_export('data/raw/session_XXX.json'))
+"
 ```
 
-### 2. Run experiments
+## Supported RawAccel Curves
 
-**P1 — RL Auto-Tuning** (highest priority):
-```bash
-# Train PPO agent to optimise accel params
-python -m experiments.rl_auto_tune.train_rl_auto_tune --config experiments/configs/rl_auto_tune.yaml
+| Style | Description |
+|-------|-------------|
+| Linear | Constant rate sensitivity increase |
+| Classic | Quake 3 style (rate × speed^exponent) |
+| Natural | Concave curve approaching a maximum |
+| Power | CS:GO / Source Engine style |
+| Synchronous | Log-symmetrical change around anchor speed |
+| Jump | Step function with optional smoothing |
 
-# Evaluate learned params vs baseline
-python -m experiments.rl_auto_tune.evaluate_rl
-```
+## Tech Stack
 
-**P2 — Inverse Modeling**:
-```bash
-# Generate synthetic training data
-python -m experiments.inverse_model.gen_synthetic_data --num-curves 2000
-
-# Train inverse model
-python -m experiments.inverse_model.train_inverse_model
-```
-
-**P3 — Ideal Curve Learning**:
-```bash
-python -m experiments.ideal_curve.train_ideal_curve
-```
-
-**P4 — Anomaly Detection**:
-```bash
-python -m experiments.aim_anomaly.train_aim_anomaly
-```
-
-**Generic dispatcher**:
-```bash
-python experiments/run_experiments.py --name rl_auto_tune
-python experiments/run_experiments.py --config experiments/configs/inverse_model.yaml
-```
-
-### 3. Monitor training
-```bash
-tensorboard --logdir runs/
-```
-
-## 📊 Key Metrics
-
-| Experiment | Primary Metrics |
-|-----------|----------------|
-| P1 RL | Hit rate, time-to-hit, overshoot rate, episode reward |
-| P2 Inverse | Parameter MSE, curve L2 distance |
-| P3 Ideal | Parameter MSE, sim-in-loop hit rate |
-| P4 Anomaly | ROC-AUC, precision, recall, F1, accuracy |
-
-## 🔧 Configuration
-
-All experiments are configured via YAML files in `experiments/configs/`. Key settings:
-
-- **rl_auto_tune.yaml**: PPO/SAC hyperparams, env config (trials, target range, episode length)
-- **inverse_model.yaml**: data generation count, model architecture, training schedule
-- **ideal_curve.yaml**: profile generator settings, sim-eval toggle
-- **aim_anomaly.yaml**: assisted-aim patterns, CNN+LSTM architecture
-
-## 📈 Future Roadmap
-
-- Plug into real PC FPS telemetry (Kovaak's, Aim Lab)
-- 2D accel curves (different for tracking vs flicking)
-- Meta-RL for few-shot adaptation to new players
-- MLP-based curve (small network mapping v → sens, constrained to be smooth/monotonic)
+- **ML**: PyTorch (ResBlock MLP with dual classification + regression heads)
+- **Data**: Synthetic generation with realistic mouse behavior simulation
+- **Backend**: FastAPI
+- **Frontend**: Vanilla HTML/CSS/JS with Chart.js
