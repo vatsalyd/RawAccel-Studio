@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RawAccel Studio — Find Your Perfect Curve</title>
+    <meta name="description" content="Upload your mouse data, ML predicts your optimal RawAccel acceleration curve. Export settings.json and import directly into RawAccel.">
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- ── Nav ──────────────────────────────────────────────────────────── -->
+<nav>
+    <div class="nav-inner">
+        <a href="/" class="logo">⚡ <span>RawAccel</span> Studio</a>
+        <span id="model-status" class="nav-status offline">Loading…</span>
+    </div>
+</nav>
+
+<!-- ── Hero ─────────────────────────────────────────────────────────── -->
+<div class="container">
+    <section class="hero">
+        <h1>Find Your Perfect Curve</h1>
+        <p>Upload your mouse data from gameplay. Our ML model analyzes your movement and predicts the optimal RawAccel settings.</p>
+    </section>
+
+    <!-- ── Steps ───────────────────────────────────────────────────── -->
+    <div class="steps">
+        <div class="step">
+            <div class="num">1</div>
+            <h3>Record</h3>
+            <p>Use the desktop logger while playing Valorant or CS2</p>
+        </div>
+        <div class="step">
+            <div class="num">2</div>
+            <h3>Upload</h3>
+            <p>Drop your session .json file here</p>
+        </div>
+        <div class="step">
+            <div class="num">3</div>
+            <h3>Export</h3>
+            <p>Get a settings.json for RawAccel</p>
+        </div>
+    </div>
+
+    <!-- ── Upload ──────────────────────────────────────────────────── -->
+    <div class="card" id="upload-card">
+        <div class="card-title">Upload Session</div>
+
+        <div class="upload-zone" id="upload-zone">
+            <div class="icon">📂</div>
+            <div class="label">Drop your session .json file here</div>
+            <div class="sublabel">or click to browse — recorded with: python -m collector.logger</div>
+            <input type="file" id="file-input" accept=".json">
+        </div>
+
+        <div class="inline-input">
+            <label for="dpi-input">Your DPI:</label>
+            <input type="number" id="dpi-input" value="800" min="100" max="16000">
+        </div>
+
+        <div class="btn-group">
+            <button class="btn btn-primary" id="predict-btn" disabled>🧠 Analyze & Predict</button>
+        </div>
+    </div>
+
+    <!-- ── Loading ─────────────────────────────────────────────────── -->
+    <div class="loading" id="loading">
+        <div class="spinner"></div>
+        <div style="color: var(--text-secondary);">Analyzing your mouse data…</div>
+    </div>
+
+    <!-- ── Results ─────────────────────────────────────────────────── -->
+    <div id="results">
+
+        <!-- Prediction summary -->
+        <div class="card">
+            <div class="card-title">Prediction</div>
+            <div class="result-header">
+                <div class="style-badge" id="style-badge">—</div>
+                <div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px;">Confidence</div>
+                    <div class="confidence-bar">
+                        <div class="confidence-fill" id="confidence-fill" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Style probabilities -->
+            <div class="prob-bars" id="prob-bars"></div>
+        </div>
+
+        <!-- Curve chart -->
+        <div class="card">
+            <div class="card-title">Acceleration Curve</div>
+            <div class="chart-wrap">
+                <canvas id="curve-chart"></canvas>
+            </div>
+        </div>
+
+        <!-- Parameters -->
+        <div class="card">
+            <div class="card-title">Predicted Parameters</div>
+            <div class="params-grid" id="params-grid"></div>
+        </div>
+
+        <!-- Export -->
+        <div class="card">
+            <div class="card-title">RawAccel Export</div>
+            <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 12px;">
+                Copy this JSON and paste into your RawAccel <code>settings.json</code> file, or download directly.
+            </p>
+            <div class="btn-group">
+                <button class="btn btn-primary" id="copy-btn">📋 Copy JSON</button>
+                <button class="btn btn-secondary" id="download-btn">💾 Download settings.json</button>
+            </div>
+            <div class="json-preview" id="json-preview">
+                <pre id="json-content"></pre>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<footer>
+    <p>Built with PyTorch + FastAPI — <a href="https://github.com/RawAccelOfficial/rawaccel" target="_blank">RawAccel</a></p>
+</footer>
+
+<div class="toast" id="toast"></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
