@@ -108,6 +108,7 @@ class AugmentedSyntheticDataset(Dataset):
 
         dt = np.diff(timestamps)
         out_dx, out_dy = apply_accel_curve(dx[1:], dy[1:], dt, params)
+        ts = timestamps[1:]  # align with diff'd arrays (N-1)
 
         # ── Augmentation: add realistic noise ──
         # Sensor jitter
@@ -116,21 +117,19 @@ class AugmentedSyntheticDataset(Dataset):
 
         # Polling rate variation (stretch/compress some intervals)
         if np.random.random() > 0.5:
-            noise = np.random.normal(1.0, 0.05, len(timestamps) - 1)
-            timestamps_aug = np.cumsum(np.diff(timestamps) * noise)
-            timestamps_aug = np.concatenate([[0], timestamps_aug])
-        else:
-            timestamps_aug = timestamps
+            noise = np.random.normal(1.0, 0.05, len(ts) - 1)
+            ts_aug = np.cumsum(np.diff(ts) * noise)
+            ts = np.concatenate([[0], ts_aug])
 
         # Random dropout (simulate missed samples)
         if np.random.random() > 0.7:
             keep = np.random.random(len(out_dx)) > 0.05
             out_dx = out_dx[keep]
             out_dy = out_dy[keep]
-            timestamps_aug = timestamps_aug[1:][keep]
+            ts = ts[keep]
 
         features = extract_features(
-            out_dx.astype(np.int32), out_dy.astype(np.int32), timestamps_aug
+            out_dx.astype(np.int32), out_dy.astype(np.int32), ts
         )
 
         style_idx, continuous = params_to_labels(params)
