@@ -19,6 +19,7 @@ import torch
 from rawaccel.curves import CurveParams
 from rawaccel.config import build_settings_json
 from ml.model import AccelPredictor
+from ml.model_v2 import AccelPredictorV2
 from ml.features import extract_features, load_session_arrays
 from ml.dataset import labels_to_params, STYLES_LIST, NUM_STYLES
 
@@ -31,13 +32,21 @@ class AccelCurvePredictor:
             device = "cuda" if torch.cuda.is_available() else "cpu"
         self.device = torch.device(device)
 
-        self.model = AccelPredictor()
         ckpt = torch.load(checkpoint_path, map_location=self.device, weights_only=True)
+        version = ckpt.get("model_version", "v1")
+
+        if version == "v2":
+            self.model = AccelPredictorV2()
+            print(f"🚀 Loading AccelPredictorV2")
+        else:
+            self.model = AccelPredictor()
+            print(f"📦 Loading AccelPredictor v1")
+
         self.model.load_state_dict(ckpt["model_state_dict"])
         self.model.to(self.device)
         self.model.eval()
 
-        print(f"✅ Loaded model from {checkpoint_path} (val_loss={ckpt.get('val_loss', '?')})")
+        print(f"✅ Loaded from {checkpoint_path} (val_loss={ckpt.get('val_loss', '?')})")
 
     def predict(self, features: np.ndarray) -> dict:
         """

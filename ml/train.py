@@ -2,7 +2,8 @@
 Training loop for the accel curve predictor.
 
 Usage:
-    python -m ml.train
+    python -m ml.train                    # v2 model (default, ~4M params)
+    python -m ml.train --model v1         # v1 model (1.15M params)
     python -m ml.train --epochs 50 --batch-size 64
 """
 from __future__ import annotations
@@ -17,12 +18,13 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 from ml.model import AccelPredictor
+from ml.model_v2 import AccelPredictorV2
 from ml.dataset import SyntheticAccelDataset, NUM_STYLES, NUM_CONTINUOUS
 
 
 def train(epochs: int = 30, batch_size: int = 64, lr: float = 1e-3,
           train_size: int = 20000, val_size: int = 2000,
-          save_dir: str = "checkpoints"):
+          save_dir: str = "checkpoints", model_version: str = "v2"):
     """Train the accel predictor on synthetic data."""
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -39,7 +41,12 @@ def train(epochs: int = 30, batch_size: int = 64, lr: float = 1e-3,
                             shuffle=False, num_workers=0)
 
     # ── Model ──
-    model = AccelPredictor().to(device)
+    if model_version == "v2":
+        model = AccelPredictorV2().to(device)
+        print("🚀 Using AccelPredictorV2 (CNN+Attention+Deep MLP)")
+    else:
+        model = AccelPredictor().to(device)
+        print("📦 Using AccelPredictor v1 (basic MLP)")
     n_params = sum(p.numel() for p in model.parameters())
     print(f"🧠 Model: {n_params:,} parameters")
 
@@ -132,6 +139,7 @@ def train(epochs: int = 30, batch_size: int = 64, lr: float = 1e-3,
                 "model_state_dict": model.state_dict(),
                 "val_loss": val_loss,
                 "val_acc": val_acc,
+                "model_version": model_version,
             }, path)
             print(f"   💾 Saved best model → {path}")
 
@@ -146,6 +154,7 @@ def main():
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--train-size", type=int, default=20000)
     parser.add_argument("--val-size", type=int, default=2000)
+    parser.add_argument("--model", type=str, default="v2", choices=["v1", "v2"])
     args = parser.parse_args()
 
     train(
@@ -154,6 +163,7 @@ def main():
         lr=args.lr,
         train_size=args.train_size,
         val_size=args.val_size,
+        model_version=args.model,
     )
 
 
