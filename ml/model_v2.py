@@ -302,8 +302,8 @@ class AccelPredictorV2(nn.Module):
     ~4M parameters (vs 1.15M in v1).
     """
 
-    def __init__(self, feature_dim: int = None, hidden_dim: int = 512,
-                 n_blocks: int = 8, n_heads: int = 8, dropout: float = 0.15):
+    def __init__(self, feature_dim: int = None, hidden_dim: int = 256,
+                 n_blocks: int = 4, n_heads: int = 4, dropout: float = 0.15):
         super().__init__()
 
         if feature_dim is None:
@@ -327,7 +327,7 @@ class AccelPredictorV2(nn.Module):
 
         # Transformer blocks
         self.attention_layers = nn.Sequential(
-            *[TransformerBlock(hidden_dim, n_heads, dropout=dropout) for _ in range(4)]
+            *[TransformerBlock(hidden_dim, n_heads, dropout=dropout) for _ in range(2)]
         )
 
         # ── Deep MLP backbone ──
