@@ -1,14 +1,8 @@
 """
 RawAccel settings.json builder — generates valid config files
-that can be imported directly into the RawAccel application.
+that can be imported directly into the RawAccel v1.7 application.
 
-Usage:
-    from rawaccel.config import build_settings_json
-    from rawaccel.curves import CurveParams, AccelStyle
-
-    params = CurveParams(style=AccelStyle.CLASSIC, acceleration=0.05, exponent=2.5)
-    json_str = build_settings_json(params)
-    # Save to file and import into RawAccel
+The output matches the exact format from the RawAccel GUI export.
 """
 from __future__ import annotations
 
@@ -18,111 +12,103 @@ from pathlib import Path
 from .curves import CurveParams, AccelStyle
 
 
-# Map our style names to RawAccel's internal mode names
+# Map our style names to RawAccel's mode names
 _STYLE_TO_MODE = {
-    AccelStyle.LINEAR: "linear",
+    AccelStyle.LINEAR: "classic",       # linear is classic with exponent=1
     AccelStyle.CLASSIC: "classic",
-    AccelStyle.NATURAL: "naturalgain",
+    AccelStyle.NATURAL: "natural",
     AccelStyle.POWER: "power",
-    AccelStyle.SYNCHRONOUS: "motivity",
+    AccelStyle.SYNCHRONOUS: "synchronous",
     AccelStyle.JUMP: "jump",
 }
 
 
-def build_accel_args(params: CurveParams) -> dict:
-    """Build the 'Accel Args' block for one axis."""
+def _build_accel_block(params: CurveParams) -> dict:
+    """Build one accel parameters block (used for both horizontal + vertical)."""
+    mode = _STYLE_TO_MODE[params.style]
 
-    # Base args common to all styles
-    args: dict = {
-        "mode": _STYLE_TO_MODE[params.style],
-        "gainSwitch": params.gain,
+    cap_jump = {"x": 0.0, "y": 0.0}
+    cap_mode = "output"
+
+    if params.style == AccelStyle.JUMP:
+        cap_jump = {"x": params.jump_input, "y": params.jump_output}
+    elif params.cap_output > 0:
+        cap_jump = {"x": 15.0, "y": params.cap_output}
+
+    return {
+        "mode": mode,
+        "Gain / Velocity": params.gain,
+        "inputOffset": params.offset,
+        "outputOffset": params.output_offset,
+        "acceleration": params.acceleration,
+        "decayRate": params.decay_rate,
+        "gamma": params.gamma,
+        "motivity": params.motivity,
+        "exponentClassic": params.exponent,
+        "scale": params.scale,
+        "exponentPower": params.exponent if params.style == AccelStyle.POWER else 0.05,
+        "limit": params.cap_output if params.cap_output > 0 else 1.5,
+        "syncSpeed": params.sync_speed,
+        "smooth": params.smooth,
+        "Cap / Jump": cap_jump,
+        "Cap mode": cap_mode,
+        "data": [],
     }
-
-    # Style-specific parameters
-    if params.style == AccelStyle.LINEAR:
-        args["acceleration"] = params.acceleration
-        if params.offset > 0:
-            args["offset"] = params.offset
-        if params.cap_output > 0:
-            args["capStyle"] = "output"
-            args["cap"] = params.cap_output
-
-    elif params.style == AccelStyle.CLASSIC:
-        args["acceleration"] = params.acceleration
-        args["exponent"] = params.exponent
-        if params.offset > 0:
-            args["offset"] = params.offset
-        if params.cap_output > 0:
-            args["capStyle"] = "output"
-            args["cap"] = params.cap_output
-
-    elif params.style == AccelStyle.NATURAL:
-        args["decayRate"] = params.decay_rate
-        if params.offset > 0:
-            args["offset"] = params.offset
-        if params.cap_output > 0:
-            args["limit"] = params.cap_output
-
-    elif params.style == AccelStyle.POWER:
-        args["acceleration"] = params.acceleration
-        args["exponent"] = params.exponent
-        args["scale"] = params.scale
-        if params.output_offset > 0:
-            args["outputOffset"] = params.output_offset
-        if params.cap_output > 0:
-            args["capStyle"] = "output"
-            args["cap"] = params.cap_output
-
-    elif params.style == AccelStyle.SYNCHRONOUS:
-        args["syncSpeed"] = params.sync_speed
-        args["motivity"] = params.motivity
-        args["gamma"] = params.gamma
-        args["smooth"] = params.smooth
-
-    elif params.style == AccelStyle.JUMP:
-        args["jumpInput"] = params.jump_input
-        args["jumpOutput"] = params.jump_output
-        args["smooth"] = params.smooth
-
-    return args
 
 
 def build_settings_dict(params: CurveParams, dpi: int = 800,
                         poll_rate: int = 1000) -> dict:
     """
-    Build a complete RawAccel settings dictionary.
+    Build a complete RawAccel v1.7 settings dictionary.
 
-    Args:
-        params: curve parameters
-        dpi: mouse DPI
-        poll_rate: mouse polling rate in Hz
-
-    Returns:
-        dict matching RawAccel's settings.json structure
+    Returns a dict matching the exact format from RawAccel's GUI export.
     """
-    accel_args = build_accel_args(params)
+    accel = _build_accel_block(params)
 
-    settings = {
-        "Accel Args": {
-            "x": accel_args,
-            "y": accel_args,  # same curve for both axes
+    return {
+        "### Accel modes ###": "classic | jump | natural | synchronous | power | lut | noaccel",
+        "### Cap modes ###": "in_out | input | output",
+        "version": "1.7.0",
+        "defaultDeviceConfig": {
+            "disable": False,
+            "Use constant time interval based on polling rate": False,
+            "DPI (normalizes input speed unit: counts/ms -> in/s)": dpi,
+            "Polling rate Hz (keep at 0 for automatic adjustment)": poll_rate,
         },
-        "Sensitivity": {
-            "x": params.sens_multiplier,
-            "y": params.sens_multiplier * params.yx_ratio,
-        },
-        "DPI": dpi,
-        "Poll Rate Hz": poll_rate,
-        "Rotation": 0.0,
-        "Whole/Combined": True,
+        "profiles": [
+            {
+                "name": "predicted",
+                "Stretches domain for horizontal vs vertical inputs": {
+                    "x": 1.0, "y": 1.0
+                },
+                "Stretches accel range for horizontal vs vertical inputs": {
+                    "x": 1.0, "y": 1.0
+                },
+                "Whole or horizontal accel parameters": accel,
+                "Vertical accel parameters": accel,
+                "Input speed calculation parameters": {
+                    "Whole/combined accel (set false for 'by component' mode)": True,
+                    "lpNorm": 2.0,
+                    "Time in ms after which an input is weighted at half its original value.": 0.0,
+                    "Time in ms after which scale is weighted at half its original value.": 0.0,
+                    "Time in ms after which an output is weighted at half its original value.": 0.0,
+                },
+                "Output DPI": float(dpi),
+                "Y/X output DPI ratio (vertical sens multiplier)": params.yx_ratio,
+                "L/R output DPI ratio (left sens multiplier)": 1.0,
+                "U/D output DPI ratio (up sens multiplier)": 1.0,
+                "Degrees of rotation": 1.0,
+                "Degrees of angle snapping": 20.0,
+                "Input Speed Cap": 0.0,
+            }
+        ],
+        "devices": [],
     }
-
-    return settings
 
 
 def build_settings_json(params: CurveParams, dpi: int = 800,
                         poll_rate: int = 1000, indent: int = 2) -> str:
-    """Build a JSON string matching RawAccel's settings.json format."""
+    """Build a JSON string matching RawAccel v1.7's settings.json format."""
     settings = build_settings_dict(params, dpi, poll_rate)
     return json.dumps(settings, indent=indent)
 

@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
+from typing import Optional
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.staticfiles import StaticFiles
@@ -40,6 +41,12 @@ app = FastAPI(title="RawAccel Studio", version="2.0")
 
 # ─── Request models ─────────────────────────────────────────────────────────
 
+class ExportRequest(BaseModel):
+    params: dict
+    dpi: int = 800
+    poll_rate: int = 1000
+
+
 class CurvePreviewRequest(BaseModel):
     style: str = "linear"
     acceleration: float = 0.5
@@ -61,29 +68,8 @@ class CurvePreviewRequest(BaseModel):
     max_speed: float = 50.0
 
 
-class ExportRequest(BaseModel):
-    style: str
-    acceleration: float = 0.5
-    exponent: float = 2.0
-    scale: float = 1.0
-    motivity: float = 1.5
-    gamma: float = 1.0
-    smooth: float = 0.5
-    decay_rate: float = 0.1
-    sync_speed: float = 5.0
-    offset: float = 0.0
-    cap_output: float = 0.0
-    output_offset: float = 0.0
-    sens_multiplier: float = 1.0
-    yx_ratio: float = 1.0
-    gain: bool = False
-    jump_input: float = 10.0
-    jump_output: float = 1.5
-    dpi: int = 800
-    poll_rate: int = 1000
-
-
-def _to_params(d: dict) -> CurveParams:
+def _dict_to_params(d: dict) -> CurveParams:
+    d = dict(d)  # copy
     style = AccelStyle(d.pop("style"))
     d.pop("max_speed", None)
     d.pop("dpi", None)
@@ -94,54 +80,66 @@ def _to_params(d: dict) -> CurveParams:
 # ─── Endpoints ──────────────────────────────────────────────────────────────
 
 @app.post("/api/predict")
-async def predict_curve(file: UploadFile = File(...), dpi: int = Form(800)):
+async def predict_curve(
+    file: UploadFile = File(...),
+    dpi: int = Form(800),
+    poll_rate: int = Form(1000),
+):
     """Upload session JSON → predict optimal RawAccel curve."""
     if _predictor is None:
         raise HTTPException(503, "Model not loaded. Run: python -m ml.train")
 
     try:
         raw = await file.read()
-        session = json.loads(raw)
+        session = json.loads(raw.decode("utf-8"))
     except Exception:
         raise HTTPException(400, "Invalid JSON file")
 
-    # Save
+    # Save uploaded session
     save_path = DATA_DIR / f"upload_{int(time.time())}.json"
-    save_path.write_text(raw.decode())
+    save_path.write_text(json.dumps(session), encoding="utf-8")
 
-    # Predict
-    from ml.features import load_session_arrays
-    dx, dy, t = load_session_arrays(session)
-    result = _predictor.predict_from_arrays(dx, dy, t)
+    try:
+        # Predict
+        from ml.features import load_session_arrays
+        dx, dy, t = load_session_arrays(session)
+        result = _predictor.predict_from_arrays(dx, dy, t)
 
-    speeds, sens = evaluate_curve(result["params"], max_speed=50.0)
-    settings = build_settings_dict(result["params"], dpi=dpi)
+        # Curve preview
+        speeds, sens = evaluate_curve(result["params"], max_speed=50.0)
 
-    return {
-        "prediction": {
+        # Flat response for the frontend
+        return {
             "style": result["style"],
             "confidence": result["confidence"],
             "style_probs": result["style_probs"],
-            "params": result["params"].as_dict(),
-        },
-        "curve": {"speeds": speeds, "sensitivities": sens},
-        "settings_json": settings,
-    }
-
-
-@app.post("/api/curve-preview")
-async def curve_preview(req: CurvePreviewRequest):
-    params = _to_params(req.model_dump())
-    speeds, sens = evaluate_curve(params, max_speed=req.max_speed)
-    return {"speeds": speeds, "sensitivities": sens}
+            "params_dict": result["params"].as_dict(),
+            "feature_dim": int(len(dx)),
+            "curve_preview": {
+                "input_speeds": [float(s) for s in speeds],
+                "output_speeds": [float(s) for s in sens],
+            },
+        }
+    except Exception as e:
+        raise HTTPException(500, f"Prediction error: {e}")
 
 
 @app.post("/api/export")
 async def export_settings(req: ExportRequest):
-    params = _to_params(req.model_dump())
-    s = build_settings_json(params, dpi=req.dpi, poll_rate=req.poll_rate)
-    return JSONResponse(content=json.loads(s),
-                        headers={"Content-Disposition": "attachment; filename=settings.json"})
+    """Generate RawAccel v1.7 settings.json from params dict."""
+    try:
+        params = _dict_to_params(req.params)
+        json_str = build_settings_json(params, dpi=req.dpi, poll_rate=req.poll_rate)
+        return {"settings_json": json_str}
+    except Exception as e:
+        raise HTTPException(400, f"Export error: {e}")
+
+
+@app.post("/api/curve-preview")
+async def curve_preview(req: CurvePreviewRequest):
+    params = _dict_to_params(req.model_dump())
+    speeds, sens = evaluate_curve(params, max_speed=req.max_speed)
+    return {"input_speeds": speeds, "output_speeds": sens}
 
 
 @app.get("/api/sessions")
@@ -151,7 +149,7 @@ async def list_sessions():
         if f.suffix != ".json":
             continue
         try:
-            d = json.loads(f.read_text())
+            d = json.loads(f.read_text(encoding="utf-8"))
             sessions.append({
                 "filename": f.name,
                 "source": d.get("source", "unknown"),
@@ -178,9 +176,9 @@ app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 @app.get("/")
 async def index():
     p = static_dir / "index.html"
-    return HTMLResponse(p.read_text()) if p.exists() else HTMLResponse("<h1>RawAccel Studio</h1>")
+    return HTMLResponse(p.read_text(encoding="utf-8")) if p.exists() else HTMLResponse("<h1>RawAccel Studio</h1>")
 
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app.server:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("app.server:app", host="127.0.0.1", port=8000, reload=True)
